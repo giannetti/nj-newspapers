@@ -1,0 +1,188 @@
+---
+title: "NJ newspaper titles over time"
+author: "Francesca Giannetti"
+date: "3/4/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+if (!(require(tidyverse))) {
+  install.packages("tidyverse")
+}
+if (!(require(tidytext))) {
+  install.packages("tidytext")
+}
+if (!(require(plotly))) {
+  install.packages("plotly")
+}
+if (!(require(leaflet))) {
+  install.packages("leaflet")
+}
+if (!(require(RColorBrewer))) {
+  install.packages("RColorBrewer")
+}
+library(tidyverse)
+library(tidytext)
+library(plotly)
+library(leaflet)
+library(RColorBrewer)
+
+knitr::opts_chunk$set(echo = TRUE)
+
+# read in data
+nj_papers <- read.delim("nj-newspapers-geocoded.csv", sep = ",", stringsAsFactors = FALSE)
+```
+
+## Newspapers by language and decade
+
+New Jersey newspapers grouped by language and decade of first publication.
+
+```{r lang}
+nj_papers %>% 
+  group_by(language, startDecade) %>% 
+  summarize(lang_total = n()) %>% 
+  ggplot(aes(x=startDecade, y=lang_total, color = language)) + 
+  geom_point(alpha = 0.5) +
+  geom_text(aes(label = language), 
+            angle = 15, 
+            check_overlap = TRUE) +
+  theme_minimal() +
+  ggtitle("New Newspaper Titles by Language and Decade") +
+  labs(x="Decades",y="Number of New Titles by Language")
+```
+
+## By Language and Decade Minus English
+
+Let's filter out English so we can see better what is happening with the other languages. 
+
+```{r langNoEng}
+# by language and decade, minus eng
+nj_papers %>% 
+  filter(!language == 'eng') %>% 
+  group_by(language, startDecade) %>% 
+  summarize(lang_total = n()) %>% 
+  ggplot(aes(x=startDecade, y=lang_total, color = language)) + 
+  geom_point(alpha = 0.5) +
+  geom_text(aes(label = language), 
+            angle = 15, nudge_y = 0.25,
+            check_overlap = TRUE) +
+  theme_minimal() +
+  ggtitle("New Non-English Newspaper Titles by Language and Decade") +
+  labs(x="Decades",y="Number of New Titles by Language")
+```
+
+## Top words in newspaper titles
+
+```{r}
+# top words in newspaper titles, sorted by frequency
+nj_papers %>% 
+  unnest_tokens(word, title) %>%
+  anti_join(stop_words) %>%
+  group_by(start, word) %>% 
+  summarize(count = n()) %>%
+  arrange(desc(count)) %>%
+  View()
+```
+
+## Same, sorted by start decade
+
+```{r}
+# custom stopword list
+stopWords <- as_data_frame(c("the", "an", "and", "der", 
+                             "die", "das", "und", "of",
+                             "in","aus","dem","or", 
+                             "jersey", "new", "york", "n")) %>%
+  rename(word = value)
+
+# top n words in newspaper titles, sorted by start decade
+nj_papers %>% 
+  unnest_tokens(word, title) %>%
+  anti_join(stopWords) %>%
+  group_by(startDecade, word) %>% 
+  summarize(count = n()) %>%
+  arrange(startDecade,desc(count)) %>%
+  top_n(10) %>%
+  View()
+```
+
+## Plot the top title words
+
+```{r titlewords}
+titleWords <- nj_papers %>% 
+  unnest_tokens(word, title) %>%
+  anti_join(stopWords) %>%
+  group_by(startDecade, word) %>% 
+  summarize(count = n()) %>%
+  mutate(percentage = count / sum(count)) %>%
+  mutate(decadeCount = length(startDecade)) %>%
+  arrange(startDecade,desc(count))
+
+# plot top words
+ggplot(titleWords) +
+  aes(x=percentage,y=startDecade,label=word) + 
+  geom_point(alpha=.3) + 
+  geom_text(check_overlap = TRUE, nudge_x = 0.15)
+```
+
+## Percentages
+
+Percentages of title words over time.
+
+```{r titlewords_ts}
+# by percentage
+newPapers <- nj_papers %>% 
+  group_by(startDecade) %>%
+  summarise(newPapers = n())
+
+titleWords <- titleWords %>%
+  left_join(newPapers, by = "startDecade") %>%
+  mutate(percentage = count/newPapers) %>%
+  arrange(startDecade, desc(percentage))
+
+plot <- ggplot(titleWords %>%
+                 filter(startDecade >= 1800 & startDecade <= 1950) %>%
+                 top_n(3) %>% 
+                 filter(percentage >= .07)) +
+  aes(x=startDecade, y=percentage, color = word) +
+  geom_line() +
+  geom_point(size = .3) +
+  ggtitle("Most Used Words in New Newspaper Titles by Decade, 1800-1950") +
+  labs(x="Decades",y="Percentage of Titles",fill="Word",caption="The top words used in the titles of new newspapers during the nineteenth century by decade") + 
+  theme(plot.title = element_text(family = "Trebuchet MS", color="#666666", face="bold", size=18, hjust=0.5)) +
+  theme(axis.title = element_text(family = "Trebuchet MS", color="#666666", face="bold", size=14)) + 
+  theme(legend.title = element_text(family = "Trebuchet MS", color="#666666", face="bold", size=14)) +
+  theme(legend.background = element_rect(color = "#efefef")) +
+  theme(plot.caption = element_text(family = "Trebuchet MS", color="#666666", size=10, hjust = 0.5, margin = margin(15, 0, 15, 0))) +
+  theme(axis.text = element_text(family = "Trebuchet MS", color="#aaaaaa", face="bold", size=10)) +
+  theme(panel.background = element_rect(fill = "white")) +
+  theme(panel.grid.major = element_line(color = "#efefef")) +
+  theme(axis.ticks = element_line(color = "#efefef"))
+
+ggplotly(plot)
+```
+
+## By place
+
+Only a subset of the NJ newspapers had a city of publication, but for these ones we can visualize them as a map. 
+
+```{r njpapersmap}
+decade_started <- colorBin("YlGnBu", nj_papers$startDecade, bins = 7, 
+                                 na.color = "#808080")
+paper_popup <- paste("<strong>Title: </strong>", 
+                     nj_papers$title, "<br>",
+                     "<strong>City: </strong>",
+                     nj_papers$city, "<br>",
+                     "<strong>Language: </strong>",
+                     nj_papers$language, "<br>",
+                     "<strong>Year started: </strong>",
+                     nj_papers$start, "<br>",
+                     "<strong>Frequency: </strong>",
+                     nj_papers$frequency)
+
+leaflet(nj_papers) %>% 
+  addProviderTiles('CartoDB.Positron') %>%
+  addCircleMarkers(lng = ~lon, lat = ~lat, radius = 5, stroke = FALSE,
+                   fillColor = ~decade_started(startDecade),
+                   popup = paper_popup)
+```
+
