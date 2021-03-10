@@ -26,6 +26,7 @@ library(tidytext)
 library(plotly)
 library(leaflet)
 library(RColorBrewer)
+library(knitr)
 
 knitr::opts_chunk$set(echo = TRUE)
 
@@ -37,7 +38,7 @@ nj_papers <- read.delim("nj-newspapers-geocoded.csv", sep = ",", stringsAsFactor
 
 New Jersey newspapers grouped by language and decade of first publication.
 
-```{r lang}
+```{r lang, echo=FALSE}
 nj_papers %>% 
   group_by(language, startDecade) %>% 
   summarize(lang_total = n()) %>% 
@@ -55,15 +56,17 @@ nj_papers %>%
 
 Let's filter out English so we can see better what is happening with the other languages. 
 
-```{r langNoEng}
+```{r langNoEng, echo=FALSE}
 # by language and decade, minus eng
+
 nj_papers %>% 
-  filter(!language == 'eng') %>% 
-  group_by(language, startDecade) %>% 
+  mutate(lang_codes1 = str_sub(language,1,3), lang_codes2 = str_sub(language,5,7)) %>% 
+  filter(lang_codes1 != 'eng') %>%
+  group_by(lang_codes1, startDecade) %>% 
   summarize(lang_total = n()) %>% 
-  ggplot(aes(x=startDecade, y=lang_total, color = language)) + 
+  ggplot(aes(x=startDecade, y=lang_total, color = lang_codes1)) + 
   geom_point(alpha = 0.5) +
-  geom_text(aes(label = language), 
+  geom_text(aes(label = lang_codes1), 
             angle = 15, nudge_y = 0.25,
             check_overlap = TRUE) +
   theme_minimal() +
@@ -73,22 +76,23 @@ nj_papers %>%
 
 ## Top words in newspaper titles
 
-```{r}
+```{r wordfreq, echo=FALSE}
 # top words in newspaper titles, sorted by frequency
 nj_papers %>% 
   unnest_tokens(word, title) %>%
   anti_join(stop_words) %>%
   group_by(start, word) %>% 
   summarize(count = n()) %>%
-  arrange(desc(count)) %>%
-  View()
+  arrange(desc(count)) %>% 
+  filter(count > 4) %>% 
+  kable()
 ```
 
 ## Same, sorted by start decade
 
-```{r}
+```{r wordfreqbydecade, echo=FALSE, message=FALSE, warning=FALSE}
 # custom stopword list
-stopWords <- as_data_frame(c("the", "an", "and", "der", 
+stopWords <- as_tibble(c("the", "an", "and", "der", 
                              "die", "das", "und", "of",
                              "in","aus","dem","or", 
                              "jersey", "new", "york", "n")) %>%
@@ -102,12 +106,13 @@ nj_papers %>%
   summarize(count = n()) %>%
   arrange(startDecade,desc(count)) %>%
   top_n(10) %>%
-  View()
+  filter(count > 4) %>% 
+  kable()
 ```
 
 ## Plot the top title words
 
-```{r titlewords}
+```{r titlewords, echo=FALSE, message=FALSE}
 titleWords <- nj_papers %>% 
   unnest_tokens(word, title) %>%
   anti_join(stopWords) %>%
@@ -128,7 +133,7 @@ ggplot(titleWords) +
 
 Percentages of title words over time.
 
-```{r titlewords_ts}
+```{r titlewords_ts, echo=FALSE, message=FALSE}
 # by percentage
 newPapers <- nj_papers %>% 
   group_by(startDecade) %>%
@@ -165,7 +170,7 @@ ggplotly(plot)
 
 Only a subset of the NJ newspapers had a city of publication, but for these ones we can visualize them as a map. 
 
-```{r njpapersmap}
+```{r njpapersmap, echo=FALSE, warning=FALSE}
 decade_started <- colorBin("YlGnBu", nj_papers$startDecade, bins = 7, 
                                  na.color = "#808080")
 paper_popup <- paste("<strong>Title: </strong>", 
