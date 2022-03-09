@@ -2,7 +2,9 @@
 title: "NJ newspaper titles over time"
 author: "Francesca Giannetti"
 date: "3/4/2020"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -32,6 +34,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # read in data
 nj_papers <- read.delim("nj-newspapers-geocoded.csv", sep = ",", stringsAsFactors = FALSE)
+
 ```
 
 ## Newspapers by language and decade
@@ -168,7 +171,7 @@ ggplotly(plot)
 
 ## By place
 
-Only a subset of the NJ newspapers had a city of publication, but for these ones we can visualize them as a map. 
+All but 26 of the NJ newspapers had a city of publication. We can visualize these on a map. 
 
 ```{r njpapersmap, echo=FALSE, warning=FALSE}
 decade_started <- colorBin("YlGnBu", nj_papers$startDecade, bins = 7, 
